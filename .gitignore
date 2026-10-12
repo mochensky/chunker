@@ -1,0 +1,28 @@
+# Rust build output
+/target/
+**/*.rs.bk
+
+# Local run directories / test worlds
+/run/
+/logs/
+/worlds/
+*.mca
+*.mcc
+session.lock
+
+# chunker runtime state written next to worlds
+.chunker/
+
+# IDE / OS noise
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs / profiling
+*.log
+hs_err_pid*.log
+perf.data*
+flamegraph*.svg

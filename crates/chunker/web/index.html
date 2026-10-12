@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>chunker</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2315171a'/%3E%3Cpath d='M3 3h4v4H3zM9 9h4v4H9z' fill='%23e8b04b'/%3E%3Cpath d='M9 3h4v4H9zM3 9h4v4H3z' fill='%234a4f57'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="login" class="login" hidden>
+    <form id="login-form" class="login-box">
+      <div class="brand"><span class="logo" aria-hidden="true"></span><span class="brand-name">chunker</span></div>
+      <p data-i18n="login_hint">Enter the access token printed in the server console.</p>
+      <input id="login-token" type="password" autocomplete="current-password" placeholder="token" spellcheck="false">
+      <button type="submit" class="primary" data-i18n="login">Sign in</button>
+    </form>
+  </div>
+
+  <div id="picker" class="picker" hidden>
+    <div class="picker-box">
+      <header class="brand">
+        <span class="logo" aria-hidden="true"></span>
+        <span class="brand-name">chunker</span>
+        <button class="ghost lang" id="p-lang" type="button" title="Language">RU</button>
+      </header>
+      <div class="picker-body">
+        <h1 data-i18n="pick_title">Choose a world</h1>
+        <p class="muted" data-i18n="pick_text">Pick a server folder or a world folder on this machine. The game version is detected from level.dat.</p>
+        <h2 data-i18n="pick_found">Found</h2>
+        <div class="world-list" id="p-list"><p class="hint" data-i18n="searching">Searching…</p></div>
+        <h2 data-i18n="pick_browse">Browse</h2>
+        <form class="inputs" id="p-path-form">
+          <label class="input grow"><input id="p-path" class="mono" spellcheck="false" placeholder="C:\servers\survival"></label>
+          <button type="submit" data-i18n="go">Go</button>
+        </form>
+        <div class="browser" id="p-browser"></div>
+        <div class="actions">
+          <button type="button" id="p-back" data-i18n="back" hidden>Back</button>
+          <button type="button" class="primary" id="p-open" data-i18n="open_folder" disabled>Open this folder</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <aside class="panel">
+      <header class="brand">
+        <span class="logo" aria-hidden="true"></span>
+        <span class="brand-name">chunker</span>
+        <span class="tag mono" id="mc-version"></span>
+        <button class="ghost lang" id="lang-toggle" type="button" title="Language">RU</button>
+      </header>
+
+      <section class="block">
+        <div class="world-head">
+          <h1 id="w-name">—</h1>
+          <button type="button" class="ghost small" id="w-change" data-i18n="change">Change</button>
+          <span class="status" id="w-status"><i></i><span id="w-status-text"></span></span>
+        </div>
+        <dl class="facts">
+          <div><dt data-i18n="seed">Seed</dt><dd><button type="button" class="copy mono" id="w-seed" title="Copy">—</button></dd></div>
+          <div><dt data-i18n="packs">Data packs</dt><dd class="chips" id="w-packs"></dd></div>
+          <div><dt data-i18n="folder">Folder</dt><dd class="mono path" id="w-dir"></dd></div>
+        </dl>
+        <p class="note danger" id="w-busy" hidden data-i18n="server_busy_note">The Minecraft server is running. Stop it before generating — chunker writes region files directly.</p>
+      </section>
+
+      <section class="block">
+        <h2 data-i18n="new_job">New task</h2>
+        <form id="job-form" autocomplete="off">
+          <div class="field">
+            <span class="label" data-i18n="dimension">Dimension</span>
+            <div class="seg" id="f-dimension" role="radiogroup"></div>
+          </div>
+          <div class="field">
+            <span class="label" data-i18n="center">Center</span>
+            <div class="inputs">
+              <label class="input"><span>X</span><input id="f-x" type="number" value="0" step="1"></label>
+              <label class="input"><span>Z</span><input id="f-z" type="number" value="0" step="1"></label>
+              <button type="button" class="icon" id="f-origin" title="0, 0"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg></button>
+            </div>
+          </div>
+          <div class="field" id="f-radius-field">
+            <span class="label" data-i18n="radius">Radius</span>
+            <div class="inputs">
+              <label class="input grow"><input id="f-radius" type="number" value="1024" min="16" step="16"><span class="suffix" data-i18n="blocks">blocks</span></label>
+            </div>
+            <div class="presets" id="f-presets"></div>
+          </div>
+          <div class="field" id="f-size-field" hidden>
+            <span class="label" data-i18n="size">Size</span>
+            <div class="inputs">
+              <label class="input grow"><span>X</span><input id="f-w" type="number" value="2048" min="32" step="16"></label>
+              <label class="input grow"><span>Z</span><input id="f-l" type="number" value="2048" min="32" step="16"></label>
+            </div>
+          </div>
+          <div class="field">
+            <span class="label" data-i18n="shape">Shape</span>
+            <div class="seg" id="f-shape" role="radiogroup">
+              <button type="button" data-value="square" data-i18n="square">Square</button>
+              <button type="button" data-value="circle" data-i18n="circle">Circle</button>
+              <button type="button" data-value="rectangle" data-i18n="rectangle">Rectangle</button>
+            </div>
+          </div>
+          <div class="field">
+            <span class="label" data-i18n="content">What to generate</span>
+            <div class="seg" id="f-content" role="radiogroup">
+              <button type="button" data-value="full" data-i18n="content_full">Everything</button>
+              <button type="button" data-value="terrain" data-i18n="content_terrain">Terrain only</button>
+            </div>
+            <p class="hint" id="f-content-hint"></p>
+          </div>
+          <details class="more">
+            <summary data-i18n="advanced">Advanced</summary>
+            <div class="field">
+              <span class="label"><span data-i18n="threads">Threads</span> <output class="mono" id="f-threads-out"></output></span>
+              <input type="range" id="f-threads" min="1" value="1">
+            </div>
+            <label class="check"><input type="checkbox" id="f-skip" checked><span data-i18n="skip_existing">Skip chunks that already exist</span></label>
+          </details>
+          <div class="estimate">
+            <div><b class="mono" id="e-chunks">0</b><span data-i18n="chunks">chunks</span></div>
+            <div><b class="mono" id="e-disk">0</b><span data-i18n="on_disk">on disk</span></div>
+            <div><b class="mono" id="e-time">—</b><span id="e-time-label" data-i18n="time">time</span></div>
+          </div>
+          <button type="submit" class="primary" id="btn-start" data-i18n="start">Start generation</button>
+          <p class="hint" data-i18n="map_hint">Click the map to place the center, drag the outline to resize. Shift + drag draws a rectangle.</p>
+        </form>
+      </section>
+
+      <section class="block" id="job">
+        <div class="job-head">
+          <h2 data-i18n="progress">Progress</h2>
+          <span class="state" id="j-state" data-state="idle"></span>
+        </div>
+        <div class="meter"><div class="meter-fill" id="j-bar"></div></div>
+        <div class="job-pct">
+          <span class="pct mono" id="j-pct">0%</span>
+          <span class="mono muted" id="j-count"></span>
+        </div>
+        <div class="stats">
+          <div><b class="mono" id="j-rate">0</b><span data-i18n="cps">chunks/s</span></div>
+          <div><b class="mono" id="j-eta">—</b><span data-i18n="eta">remaining</span></div>
+          <div><b class="mono" id="j-elapsed">—</b><span data-i18n="elapsed">elapsed</span></div>
+        </div>
+        <dl class="facts compact">
+          <div><dt data-i18n="generated">Generated</dt><dd class="mono" id="j-gen">0</dd></div>
+          <div><dt data-i18n="skipped">Skipped</dt><dd class="mono" id="j-skip">0</dd></div>
+          <div><dt data-i18n="regions">Regions</dt><dd class="mono" id="j-regions">0 / 0</dd></div>
+        </dl>
+        <p class="note danger" id="j-error" hidden></p>
+        <div class="actions">
+          <button type="button" id="btn-pause" data-i18n="pause">Pause</button>
+          <button type="button" id="btn-resume" data-i18n="resume">Resume</button>
+          <button type="button" id="btn-cancel" class="danger" data-i18n="cancel">Cancel</button>
+        </div>
+      </section>
+
+      <footer class="foot" data-i18n-html="experimental">
+        Terrain, structures, features and structure mobs are generated bit-exact with vanilla. The server
+        adds light and the first animals when the chunks load.
+      </footer>
+    </aside>
+
+    <main class="map" id="map-wrap">
+      <canvas id="map"></canvas>
+      <div class="map-bar">
+        <div class="seg small" id="layer" role="radiogroup">
+          <button type="button" data-value="surface" data-i18n="layer_surface">Terrain</button>
+          <button type="button" data-value="biome" data-i18n="layer_biome">Biomes</button>
+        </div>
+      </div>
+      <div class="map-tools">
+        <button type="button" class="icon" id="zoom-in" title="Zoom in"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></button>
+        <button type="button" class="icon" id="zoom-out" title="Zoom out"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button>
+        <button type="button" class="icon" id="zoom-fit" title="Fit"><svg viewBox="0 0 16 16"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg></button>
+      </div>
+      <div class="readout mono" id="readout"></div>
+      <div class="scale mono" id="scale"><i></i><span></span></div>
+    </main>
+  </div>
+
+  <div class="modal" id="confirm" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true">
+      <h3 data-i18n="confirm_title">Start generation?</h3>
+      <p data-i18n="confirm_text">Make sure the Minecraft server is stopped: chunker writes the region files directly.</p>
+      <div class="actions">
+        <button type="button" id="confirm-no" data-i18n="back">Back</button>
+        <button type="button" class="primary" id="confirm-yes" data-i18n="start">Start generation</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

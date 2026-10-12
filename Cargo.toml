@@ -1,0 +1,62 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/chunker",
+]
+default-members = ["crates/chunker"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/mochensky/chunker"
+publish = false
+
+[workspace.dependencies]
+# the generation library, from crates.io (github.com/mochensky/chunker-worldgen)
+chunker-nbt = "0.2"
+chunker-anvil = "0.2"
+chunker-data = "0.2"
+chunker-worldgen = "0.2"
+
+# external
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+rayon = "1"
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
+rustc-hash = "2"
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+lz4_flex = "0.11"
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal"] }
+getrandom = "0.3"
+mimalloc = { version = "0.1", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+# Worldgen is extremely hot; keep it optimized even in debug builds so that
+# tests and local runs stay usable.
+[profile.dev.package.chunker-worldgen]
+opt-level = 3
+debug-assertions = true
+overflow-checks = false
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = "none"

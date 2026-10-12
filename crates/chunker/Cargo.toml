@@ -1,0 +1,30 @@
+[package]
+name = "chunker"
+description = "Fast Minecraft world pre-generator with a web UI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "chunker"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+axum.workspace = true
+parking_lot.workspace = true
+getrandom.workspace = true
+chunker-data.workspace = true
+chunker-worldgen.workspace = true
+futures-util = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
+chunker-anvil.workspace = true
+chunker-nbt.workspace = true
+mimalloc.workspace = true
