@@ -17,7 +17,6 @@ use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
-use chunker_anvil::RegionPos;
 use chunker_data::Identifier;
 use chunker_worldgen::job::JobSpec;
 use chunker_worldgen::{World, WorldOptions};
@@ -476,6 +475,10 @@ struct TileQuery {
     z: i32,
     /// `surface` (default) or `biome`.
     layer: Option<String>,
+    /// Overview level: the tile covers `2^level` x `2^level` regions starting at region
+    /// `(x << level, z << level)`.
+    #[serde(default)]
+    level: u8,
 }
 
 async fn map_tile(State(s): State<AppState>, Query(q): Query<TileQuery>) -> Response {
@@ -488,7 +491,7 @@ async fn map_tile(State(s): State<AppState>, Query(q): Query<TileQuery>) -> Resp
     };
     let biome = q.layer.as_deref() == Some("biome");
     let png = tokio::task::spawn_blocking(move || {
-        let tile = engine.previews(&id).tile(RegionPos::new(q.x, q.z))?;
+        let tile = engine.previews(&id).overview(q.level, q.x, q.z)?;
         Some(if biome {
             tile.biome_png(&engine.biome_palette())
         } else {

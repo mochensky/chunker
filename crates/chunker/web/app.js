@@ -447,11 +447,18 @@ function renderJob(job) {
 // ---------------------------------------------------------------------------------------------
 // Map data: region list, tiles (PNG per region and layer), live updates over SSE.
 
+// A tile of level L is 128x128 pixels covering 2^L x 2^L regions; the map picks the level by zoom so
+// the number of tiles on screen stays about the same however far it is zoomed out.
 const REGION = 512;
 const TILE_PX = 128;
-const tiles = new Map(); // "layer:x,z" -> { img, data, version, loading, fetchedAt, missing }
+const MAX_LEVEL = 8;
+const tiles = new Map(); // "layer:level:x,z" -> { img, data, version, loading, fetchedAt, missing }, oldest use first
+const MAX_TILES = 768;
 let inflight = 0;
 const MAX_INFLIGHT = 6;
+// Bumped whenever `state.regions` changes; invalidates `levelTiles`.
+let regionsRev = 0;
+const levelCache = new Map(); // level -> { rev, versions }
 
 async function loadRegions() {
   const dim = state.dimension;
@@ -459,27 +466,71 @@ async function loadRegions() {
     const r = await api(`/api/map/regions?dimension=${encodeURIComponent(dim)}`);
     if (dim !== state.dimension) return;
     const next = new Map();
-    for (const [x, z, count, version] of r.regions) next.set(`${x},${z}`, { count, version });
+    for (const [x, z, count, version] of r.regions) next.set(`${x},${z}`, { x, z, count, version });
     state.regions = next;
-    state.completed = new Set(r.completed.map(([x, z]) => `${x},${z}`));
+    regionsRev++;
     state.seq = r.seq;
     draw();
   } catch { /* reported elsewhere */ }
 }
 
-function tileUrl(layer, x, z, v) {
-  return `/api/map/tile?dimension=${encodeURIComponent(state.dimension)}&x=${x}&z=${z}&layer=${layer}&v=${v}`;
+/** Tiles of `level` that contain regions: "x,z" -> highest version of their regions. */
+function levelTiles(level) {
+  const cached = levelCache.get(level);
+  if (cached && cached.rev === regionsRev) return cached.versions;
+  const versions = new Map();
+  for (const r of state.regions.values()) {
+    const key = `${r.x >> level},${r.z >> level}`;
+    versions.set(key, Math.max(versions.get(key) ?? 0, r.version));
+  }
+  levelCache.set(level, { rev: regionsRev, versions });
+  return versions;
 }
 
-async function fetchTile(layer, x, z, version) {
-  const key = `${layer}:${x},${z}`;
+/** Level whose pixels are about one device pixel at the current zoom. */
+function mapLevel() {
+  const level = Math.floor(Math.log2(devicePixelRatio / ((REGION / TILE_PX) * view.scale)));
+  return Math.max(0, Math.min(MAX_LEVEL, level));
+}
+
+const tileKey = (layer, level, x, z) => `${layer}:${level}:${x},${z}`;
+
+/** The loaded tile, marked as recently used. */
+function tileEntry(layer, level, x, z) {
+  const key = tileKey(layer, level, x, z);
+  const e = tiles.get(key);
+  if (e) {
+    tiles.delete(key);
+    tiles.set(key, e);
+  }
+  return e;
+}
+
+/** Whether a tile should be requested now; `throttled` is set when it waits for the retry delay. */
+function needsFetch(e, version, now) {
+  if (!e) return { fetch: true };
+  if (e.loading || (e.version >= version && (e.img || e.missing))) return { fetch: false };
+  return now - (e.fetchedAt || 0) >= 1000 ? { fetch: true } : { fetch: false, throttled: true };
+}
+
+function tileUrl(layer, level, x, z, v) {
+  return `/api/map/tile?dimension=${encodeURIComponent(state.dimension)}&level=${level}&x=${x}&z=${z}&layer=${layer}&v=${v}`;
+}
+
+async function fetchTile(layer, level, x, z, version) {
+  const key = tileKey(layer, level, x, z);
   const entry = tiles.get(key) || {};
   entry.loading = true;
   tiles.set(key, entry);
+  while (tiles.size > MAX_TILES) {
+    const [oldKey, old] = tiles.entries().next().value;
+    tiles.delete(oldKey);
+    old.img?.close?.();
+  }
   inflight++;
   const dim = state.dimension;
   try {
-    const res = await fetch(tileUrl(layer, x, z, version), { credentials: "same-origin" });
+    const res = await fetch(tileUrl(layer, level, x, z, version), { credentials: "same-origin" });
     if (res.status === 401) return showLogin();
     if (!res.ok) {
       entry.missing = true;
@@ -508,25 +559,22 @@ async function fetchTile(layer, x, z, version) {
   }
 }
 
-/** Requests missing or outdated tiles of the visible regions, nearest first. */
+/** Requests missing or outdated visible tiles, nearest to the centre first. */
 function ensureTiles(visible) {
-  if (visible.length > 1600) return;
   const now = performance.now();
   const wanted = [];
-  for (const { x, z, region } of visible) {
-    for (const layer of state.layer === "biome" ? ["biome"] : ["surface"]) {
-      const e = tiles.get(`${layer}:${x},${z}`);
-      if (e?.loading) continue;
-      if (e && e.version >= region.version && (e.img || e.missing)) continue;
-      if (e && now - (e.fetchedAt || 0) < 1000) { scheduleDraw(1000); continue; }
-      wanted.push({ layer, x, z, region });
-    }
+  for (const v of visible) {
+    const need = needsFetch(tiles.get(tileKey(state.layer, v.level, v.x, v.z)), v.version, now);
+    if (need.fetch) wanted.push(v);
+    else if (need.throttled) scheduleDraw(1000);
   }
-  const [cx, cz] = [view.x / REGION, view.z / REGION];
+  if (!wanted.length) return;
+  const span = REGION << wanted[0].level;
+  const [cx, cz] = [view.x / span, view.z / span];
   wanted.sort((a, b) => Math.hypot(a.x + 0.5 - cx, a.z + 0.5 - cz) - Math.hypot(b.x + 0.5 - cx, b.z + 0.5 - cz));
   for (const w of wanted) {
     if (inflight >= MAX_INFLIGHT) break;
-    fetchTile(w.layer, w.x, w.z, w.region.version);
+    fetchTile(state.layer, w.level, w.x, w.z, w.version);
   }
 }
 
@@ -541,10 +589,11 @@ function connectEvents() {
     if (state.world && generation && generation !== state.world.generation) return location.reload();
     for (const [x, z, v] of changed || []) {
       const key = `${x},${z}`;
-      const r = state.regions.get(key) || { count: 0, version: 0 };
+      const r = state.regions.get(key) || { x, z, count: 0, version: 0 };
       r.version = Math.max(r.version, v);
       state.regions.set(key, r);
     }
+    if (changed?.length) regionsRev++;
     const completed = job ? job.completed_regions : 0;
     if (completed !== lastCompleted) {
       if (lastCompleted >= 0) loadRegions();
@@ -563,6 +612,7 @@ async function selectDimension(id) {
   state.dimension = id;
   setSeg($("f-dimension"), id);
   state.regions = new Map();
+  regionsRev++;
   tiles.forEach((e) => e.img?.close?.());
   tiles.clear();
   await loadRegions();
@@ -614,6 +664,41 @@ function animateMap(on) {
   if (on) tick();
 }
 
+/**
+ * Draws tile (level, x, z). While it loads, the part of a coarser loaded tile is drawn instead, or
+ * the finer tiles that are loaded (after zooming out), so the map does not go blank.
+ */
+function drawTile(level, x, z, sx, sy, size) {
+  // Whole device pixels, so neighbouring tiles meet without a smoothed seam.
+  const snap = (v) => Math.round(v * devicePixelRatio) / devicePixelRatio;
+  const put = (img, srcX, srcY, srcSize, x0, y0, s) => {
+    const [a, b] = [snap(x0), snap(y0)];
+    g.drawImage(img, srcX, srcY, srcSize, srcSize, a, b, snap(x0 + s) - a, snap(y0 + s) - b);
+  };
+  const own = tileEntry(state.layer, level, x, z);
+  if (own?.img) {
+    put(own.img, 0, 0, TILE_PX, sx, sy, size);
+    return;
+  }
+  for (let k = 1; k <= 4 && level + k <= MAX_LEVEL; k++) {
+    const parent = tileEntry(state.layer, level + k, x >> k, z >> k);
+    if (!parent?.img) continue;
+    const part = TILE_PX >> k;
+    put(parent.img, (x - ((x >> k) << k)) * part, (z - ((z >> k) << k)) * part, part, sx, sy, size);
+    return;
+  }
+  if (level === 0) {
+    g.fillStyle = "#17191c";
+    g.fillRect(sx, sy, size, size);
+    return;
+  }
+  const half = size / 2;
+  for (let i = 0; i < 4; i++) {
+    const child = tileEntry(state.layer, level - 1, 2 * x + (i & 1), 2 * z + (i >> 1));
+    if (child?.img) put(child.img, 0, 0, TILE_PX, sx + (i & 1) * half, sy + (i >> 1) * half, half);
+  }
+}
+
 function render() {
   const { w, h, scale } = view;
   g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
@@ -622,27 +707,23 @@ function render() {
 
   const [wx0, wz0] = toWorld(0, 0);
   const [wx1, wz1] = toWorld(w, h);
-  const rx0 = Math.floor(wx0 / REGION), rz0 = Math.floor(wz0 / REGION);
-  const rx1 = Math.floor(wx1 / REGION), rz1 = Math.floor(wz1 / REGION);
   const rpx = REGION * scale;
 
   // Tiles
+  const level = mapLevel();
+  const span = REGION << level;
+  const tpx = span * scale;
+  const versions = levelTiles(level);
   const visible = [];
-  g.imageSmoothingEnabled = rpx < TILE_PX;
+  g.imageSmoothingEnabled = tpx * devicePixelRatio < TILE_PX;
   g.imageSmoothingQuality = "medium";
-  for (let rz = rz0; rz <= rz1; rz++) {
-    for (let rx = rx0; rx <= rx1; rx++) {
-      const region = state.regions.get(`${rx},${rz}`);
-      if (!region) continue;
-      visible.push({ x: rx, z: rz, region });
-      const [sx, sy] = toScreen(rx * REGION, rz * REGION);
-      const tile = tiles.get(`${state.layer}:${rx},${rz}`);
-      if (tile?.img) {
-        g.drawImage(tile.img, sx, sy, rpx, rpx);
-      } else {
-        g.fillStyle = "#17191c";
-        g.fillRect(sx, sy, rpx, rpx);
-      }
+  for (let tz = Math.floor(wz0 / span); tz <= Math.floor(wz1 / span); tz++) {
+    for (let tx = Math.floor(wx0 / span); tx <= Math.floor(wx1 / span); tx++) {
+      const version = versions.get(`${tx},${tz}`);
+      if (version === undefined) continue;
+      visible.push({ level, x: tx, z: tz, version });
+      const [sx, sy] = toScreen(tx * span, tz * span);
+      drawTile(level, tx, tz, sx, sy, tpx);
     }
   }
   ensureTiles(visible);
@@ -899,21 +980,20 @@ $("zoom-in").onclick = () => zoomAt(view.w / 2, view.h / 2, 1.6);
 $("zoom-out").onclick = () => zoomAt(view.w / 2, view.h / 2, 1 / 1.6);
 $("zoom-fit").onclick = fitTarget;
 
-const biomeTilesRequested = new Set();
+/** Biome under the cursor, from the biome tile of the level on screen (fetched when missing). */
 function biomeAt(x, z) {
-  const rx = Math.floor(x / REGION), rz = Math.floor(z / REGION);
-  const region = state.regions.get(`${rx},${rz}`);
-  if (!region) return null;
-  const tile = tiles.get(`biome:${rx},${rz}`);
-  if (!tile?.data || tile.version < region.version) {
-    const key = `${rx},${rz}:${region.version}`;
-    if (!tile?.loading && !biomeTilesRequested.has(key) && inflight < MAX_INFLIGHT) {
-      biomeTilesRequested.add(key);
-      fetchTile("biome", rx, rz, region.version).then(renderReadout);
-    }
-    if (!tile?.data) return null;
+  const level = mapLevel();
+  const span = REGION << level;
+  const tx = Math.floor(x / span), tz = Math.floor(z / span);
+  const version = levelTiles(level).get(`${tx},${tz}`);
+  if (version === undefined) return null;
+  const tile = tileEntry("biome", level, tx, tz);
+  if (inflight < MAX_INFLIGHT && needsFetch(tile, version, performance.now()).fetch) {
+    fetchTile("biome", level, tx, tz, version).then(renderReadout);
   }
-  const px = Math.floor((x - rx * REGION) / 4), pz = Math.floor((z - rz * REGION) / 4);
+  if (!tile?.data) return null;
+  const per = span / TILE_PX;
+  const px = Math.floor((x - tx * span) / per), pz = Math.floor((z - tz * span) / per);
   const i = (pz * TILE_PX + px) * 4;
   if (tile.data[i + 3] === 0) return null;
   return state.biomeByColor.get((tile.data[i] << 16) | (tile.data[i + 1] << 8) | tile.data[i + 2]) || null;

@@ -15,10 +15,10 @@ publish = false
 
 [workspace.dependencies]
 # the generation library, from crates.io (github.com/mochensky/chunker-worldgen)
-chunker-nbt = "0.2"
-chunker-anvil = "0.2"
-chunker-data = "0.2"
-chunker-worldgen = "0.2"
+chunker-nbt = "0.2.1"
+chunker-anvil = "0.2.1"
+chunker-data = "0.2.1"
+chunker-worldgen = "0.2.1"
 
 # external
 anyhow = "1"

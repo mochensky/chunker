@@ -217,9 +217,9 @@ dependencies = [
 
 [[package]]
 name = "chunker-anvil"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "030bdbd37f9d756186ad25500b3951a1de0560a18c3b80d7c2a9f78412c23b6b"
+checksum = "d3a5ac796bc3ec08b4122d88a48d99a441dcd48238606cbed55db8f8d323131f"
 dependencies = [
  "chunker-nbt",
  "flate2",
@@ -228,9 +228,9 @@ dependencies = [
 
 [[package]]
 name = "chunker-data"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e57096f809ce72d76c651d502611aaea21fa39811e277fce5a6822186558fd9"
+checksum = "1df5b0c59b996d925847cf7cb7c645d229612cc3f3f5c22950ddda26493bcc31"
 dependencies = [
  "anyhow",
  "chunker-nbt",
@@ -247,9 +247,9 @@ dependencies = [
 
 [[package]]
 name = "chunker-nbt"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7937f160decf02982211ceebcbe62132543381fe3574eda662211df0cc0700f"
+checksum = "1317f18d6692fc9b5783f456ae655a8873944311c27153a04e3b75fb349da4bb"
 dependencies = [
  "flate2",
  "thiserror",
@@ -257,9 +257,9 @@ dependencies = [
 
 [[package]]
 name = "chunker-worldgen"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b17885503b051f0bfd5b59f07db164c994e793552b4f0a279851c317fb07078"
+checksum = "6a1bfdf71d49e18a0a8cdaff356da49a307d2b65c63ee4eb8dbb381e44e7d602"
 dependencies = [
  "anyhow",
  "chunker-anvil",
